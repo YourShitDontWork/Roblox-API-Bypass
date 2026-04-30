@@ -4,14 +4,12 @@ import random
 import winreg
 import time
 import urllib.request
-import urllib.error
 import shutil
 import threading
 from pathlib import Path
 import customtkinter as ctk
 from tkinter import messagebox
 import sqlite3
-from pathlib import Path
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -22,24 +20,11 @@ SKIP_KEYWORDS = ("virtual", "vmware", "hyper-v", "loopback", "bluetooth", "minip
 
 def clear_browser_cookies():
     local = os.environ.get('LOCALAPPDATA', '')
-    appdata = os.environ.get('APPDATA', '')
-
-    confirm = messagebox.askyesno(
-        "Close Browsers?",
-        "To clear cookies, open browsers need to be closed.\n\nClose all browsers now?"
-    )
+    confirm = messagebox.askyesno("Close Browsers?", "To clear cookies, browsers need to be closed.\nClose all browsers now?")
     if confirm:
-        browsers_to_kill = [
-            "chrome.exe", "msedge.exe", "brave.exe",
-            "opera.exe", "vivaldi.exe", "firefox.exe"
-        ]
+        browsers_to_kill = ["chrome.exe", "msedge.exe", "brave.exe", "opera.exe", "vivaldi.exe", "firefox.exe"]
         for browser in browsers_to_kill:
-            subprocess.run(
-                ["taskkill", "/F", "/IM", browser],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
+            subprocess.run(["taskkill", "/F", "/IM", browser], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
         time.sleep(1.5)
 
     cookie_paths = [
@@ -49,12 +34,6 @@ def clear_browser_cookies():
         Path(local) / "Microsoft/Edge/User Data/Default/Cookies",
         Path(local) / "BraveSoftware/Brave-Browser/User Data/Default/Network/Cookies",
         Path(local) / "BraveSoftware/Brave-Browser/User Data/Default/Cookies",
-        Path(appdata) / "Opera Software/Opera Stable/Network/Cookies",
-        Path(appdata) / "Opera Software/Opera Stable/Cookies",
-        Path(appdata) / "Opera Software/Opera GX Stable/Network/Cookies",
-        Path(appdata) / "Opera Software/Opera GX Stable/Cookies",
-        Path(local) / "Vivaldi/User Data/Default/Network/Cookies",
-        Path(local) / "Vivaldi/User Data/Default/Cookies",
     ]
 
     for path in cookie_paths:
@@ -67,64 +46,27 @@ def clear_browser_cookies():
         except Exception:
             pass
 
-    firefox_profiles = Path(appdata) / "Mozilla/Firefox/Profiles"
-    if firefox_profiles.exists():
-        for profile in firefox_profiles.iterdir():
-            cookies_db = profile / "cookies.sqlite"
-            if cookies_db.exists():
-                try:
-                    conn = sqlite3.connect(str(cookies_db))
-                    conn.execute("DELETE FROM moz_cookies WHERE host LIKE '%roblox.com%'")
-                    conn.commit()
-                    conn.close()
-                except Exception:
-                    pass
-
-    roblox_cookie_paths = [
-        Path(local) / "Roblox/LocalStorage",
-        Path(local) / "Roblox/cookies",
-    ]
-    for path in roblox_cookie_paths:
+    roblox_paths = [Path(local) / "Roblox/LocalStorage", Path(local) / "Roblox/cookies"]
+    for path in roblox_paths:
         try:
             if path.exists():
-                shutil.rmtree(path)
+                shutil.rmtree(path, ignore_errors=True)
         except Exception:
             pass
-
-
-def wait_for_reconnection(status_callback):
-    attempt = 0
-    while True:
-        try:
-            urllib.request.urlopen("https://www.google.com", timeout=3)
-            return
-        except Exception:
-            attempt += 1
-            status_callback(f"Waiting for reconnection... (attempt {attempt})", is_working=True)
-            time.sleep(2)
 
 
 class NetworkManager:
     @staticmethod
     def get_real_adapter():
         output = subprocess.run("getmac /v /fo csv /nh", shell=True, capture_output=True, text=True).stdout.strip()
-
         for line in output.splitlines():
             parts = [p.strip('"') for p in line.split('","')]
-            if len(parts) < 4:
-                continue
-
+            if len(parts) < 4: continue
             name, _, mac, transport = parts
             mac = mac.replace("-", ":")
-
-            if mac == "N/A" or "Media disconnected" in transport:
-                continue
-
-            if any(k in name.lower() for k in SKIP_KEYWORDS):
-                continue
-            if mac[:8].upper() in VIRTUAL_MAC_PREFIXES:
-                continue
-
+            if mac == "N/A" or "Media disconnected" in transport: continue
+            if any(k in name.lower() for k in SKIP_KEYWORDS): continue
+            if mac[:8].upper() in VIRTUAL_MAC_PREFIXES: continue
             return name, mac
         return None, None
 
@@ -143,152 +85,169 @@ class NetworkManager:
                     try:
                         subkey_name = winreg.EnumKey(base, i)
                         subkey_path = rf"{REGISTRY_BASE}\{subkey_name}"
-
                         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, subkey_path, 0, winreg.KEY_ALL_ACCESS) as subkey:
-                            name, _ = winreg.QueryValueEx(subkey, "DriverDesc")
-
+                            name = winreg.QueryValueEx(subkey, "DriverDesc")[0]
                             if adapter_name.lower() in name.lower():
                                 clean_mac = new_mac.replace(":", "").replace("-", "")
                                 winreg.SetValueEx(subkey, "NetworkAddress", 0, winreg.REG_SZ, clean_mac)
                                 return True
-                    except FileNotFoundError:
+                    except Exception:
                         pass
-                    except OSError:
-                        break
                     i += 1
         except PermissionError:
-            raise PermissionError("Registry access denied. Script must be run as Administrator.")
+            messagebox.showerror("Error", "Run as Administrator!")
+            return False
         return False
 
     @staticmethod
     def restart_adapter(name):
-        subprocess.run(f'netsh interface set interface "{name}" disable', shell=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        subprocess.run(f'netsh interface set interface "{name}" disable', shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
         time.sleep(1.5)
-        subprocess.run(f'netsh interface set interface "{name}" enable', shell=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        subprocess.run(f'netsh interface set interface "{name}" enable', shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
 
 
-class SpooferApp(ctk.CTk):
-    def __init__(self):
-        super().__init__()
 
-        self.title("MAC Spoofer For Roblox")
-        self.geometry("500x480")
-        self.resizable(False, False)
 
-        self.net_manager = NetworkManager()
-        self.adapter_name, self.current_mac = self.net_manager.get_real_adapter()
-        self.target_mac = self.net_manager.generate_mac()
+app = ctk.CTk()
+app.title("Roblox Ban Async Bypass")
+app.geometry("560x380")
+app.resizable(True, True)
+app.overrideredirect(True)
 
-        self._build_ui()
+main_frame = ctk.CTkFrame(app, fg_color="#1f1f1f", corner_radius=0)
+main_frame.pack(fill="both", expand=True)
 
-    def _build_ui(self):
-        self.header = ctk.CTkLabel(self, text="MAC Spoofer For Roblox", font=ctk.CTkFont(size=20, weight="bold"))
-        self.header.pack(pady=(20, 5))
 
-        self.sub_header = ctk.CTkLabel(self, text="Deletes and Reinstalls Roblox and changes your MAC Address", text_color="gray")
-        self.sub_header.pack(pady=(0, 20))
+title_bar = ctk.CTkFrame(main_frame, height=32, fg_color="#161616", corner_radius=0)
+title_bar.pack(fill="x")
+title_bar.pack_propagate(False)
 
-        self.info_frame = ctk.CTkFrame(self)
-        self.info_frame.pack(padx=20, pady=10, fill="x")
 
-        self._add_info_row("Adapter:", self.adapter_name or "Not Found")
-        self._add_info_row("Current MAC:", self.current_mac or "N/A")
-        self._add_info_row("Target MAC:", self.target_mac, is_highlight=True)
+top_round = ctk.CTkFrame(title_bar, height=32, fg_color="#161616", corner_radius=12)
+top_round.pack(fill="x", padx=0, pady=0)
+top_round.pack_propagate(False)
 
-        self.status_label = ctk.CTkLabel(self, text="Ready", font=ctk.CTkFont(size=14))
-        self.status_label.pack(pady=(20, 5))
+title_label = ctk.CTkLabel(top_round, text="Roblox Ban Async Bypass", font=("Segoe UI", 12, "bold"), text_color="white")
+title_label.pack(side="left", padx=12, pady=0)
 
-        self.progress = ctk.CTkProgressBar(self, mode="indeterminate")
-        self.progress.pack(padx=40, pady=10, fill="x")
-        self.progress.set(0)
 
-        self.run_btn = ctk.CTkButton(
-            self,
-            text="Start Bypass",
-            height=40,
-            command=self.start_worker_thread
-        )
-        self.run_btn.pack(pady=20)
+close_btn = ctk.CTkButton(top_round, text="✕", width=32, height=26, fg_color="transparent", hover_color="#c42b1c", text_color="white", command=app.destroy)
+close_btn.pack(side="right", padx=1, pady=2)
 
-    def _add_info_row(self, label_text, value_text, is_highlight=False):
-        row = ctk.CTkFrame(self.info_frame, fg_color="transparent")
-        row.pack(fill="x", padx=15, pady=10)
+min_btn = ctk.CTkButton(top_round, text="─", width=32, height=26, fg_color="transparent", hover_color="#2a2a2a", text_color="white", command=lambda: app.iconify())
+min_btn.pack(side="right", padx=1, pady=2)
 
-        ctk.CTkLabel(row, text=label_text, text_color="gray").pack(side="left")
 
-        val_color = "#3b8ed0" if is_highlight else "white"
-        ctk.CTkLabel(row, text=value_text, text_color=val_color, font=ctk.CTkFont(weight="bold")).pack(side="right")
+def start_move(e): app._x, app._y = e.x, e.y
+def do_move(e): 
+    app.geometry(f"+{app.winfo_x() + e.x - app._x}+{app.winfo_y() + e.y - app._y}")
+title_bar.bind("<Button-1>", start_move)
+title_bar.bind("<B1-Motion>", do_move)
+top_round.bind("<Button-1>", start_move)
+top_round.bind("<B1-Motion>", do_move)
 
-    def update_ui_state(self, message, is_working=False):
-        self.status_label.configure(text=message)
-        if is_working:
-            self.run_btn.configure(state="disabled")
-            self.progress.start()
-        else:
-            self.run_btn.configure(state="normal")
-            self.progress.stop()
-            self.progress.set(0)
+content = ctk.CTkFrame(main_frame, fg_color="#242424", corner_radius=10)
+content.pack(padx=14, pady=(0, 10), fill="both", expand=True)
 
-    def start_worker_thread(self):
-        if not self.adapter_name:
-            messagebox.showerror("Error", "No valid network adapter found.")
-            return
+ctk.CTkLabel(content, text="Roblox Ban Async Bypass", font=("Segoe UI", 15, "bold")).pack(pady=(12, 5))
 
-        threading.Thread(target=self._execution_sequence, daemon=True).start()
+status_label = ctk.CTkLabel(content, text="Ready", font=("Segoe UI", 10), text_color="#888888")
+status_label.pack(pady=(0, 6))
 
-    def _execution_sequence(self):
+progress = ctk.CTkProgressBar(content, width=290, height=5, progress_color="#3b8ed0")
+progress.set(0)
+progress.pack(pady=(0, 10))
+
+check3_var = ctk.StringVar(value="on")
+check4_var = ctk.StringVar(value="on")
+check6_var = ctk.StringVar(value="on")
+check5_var = ctk.StringVar(value="off")
+
+opts = ctk.CTkFrame(content, fg_color="transparent")
+opts.pack(pady=4, padx=25, fill="x")
+
+ctk.CTkCheckBox(opts, text="Spoof MAC Address", variable=check3_var, onvalue="on", offvalue="off").pack(anchor="w", pady=3)
+ctk.CTkCheckBox(opts, text="Delete Browser Cookies", variable=check4_var, onvalue="on", offvalue="off").pack(anchor="w", pady=3)
+ctk.CTkCheckBox(opts, text="Reinstall Roblox", variable=check6_var, onvalue="on", offvalue="off").pack(anchor="w", pady=3)
+ctk.CTkCheckBox(opts, text="Restart PC (Optional)", variable=check5_var, onvalue="on", offvalue="off").pack(anchor="w", pady=3)
+
+def update_status(text):
+    status_label.configure(text=text)
+    app.update_idletasks()
+
+def start_bypass():
+    btn7.configure(state="disabled")
+    progress.start()
+    update_status("Starting bypass sequence...")
+
+    def run_sequence():
         try:
-            self.update_ui_state("Clearing session cookies...", is_working=True)
-            clear_browser_cookies()
-            time.sleep(1)
+            adapter_name, _ = NetworkManager.get_real_adapter()
 
-            self.update_ui_state("Applying new MAC address...", is_working=True)
-            self.net_manager.set_registry_mac(self.adapter_name, self.target_mac)
+            if check4_var.get() == "on":
+                update_status("Clearing Roblox cookies...")
+                clear_browser_cookies()
 
-            self.update_ui_state("Restarting network adapter...", is_working=True)
-            self.net_manager.restart_adapter(self.adapter_name)
+            if check3_var.get() == "on":
+                if not adapter_name:
+                    messagebox.showerror("Error", "No valid network adapter found!")
+                    return
+                update_status("Generating new MAC address...")
+                new_mac = NetworkManager.generate_mac()
+                update_status(f"Applying new MAC: {new_mac}")
+                success = NetworkManager.set_registry_mac(adapter_name, new_mac)
+                if success:
+                    update_status("Restarting network adapter...")
+                    NetworkManager.restart_adapter(adapter_name)
+                    time.sleep(4)
 
-            wait_for_reconnection(self.update_ui_state)
+            if check6_var.get() == "on":
+                update_status("Purging old Roblox data...")
+                app_path = Path(os.environ.get('LOCALAPPDATA')) / 'Roblox'
+                if app_path.exists():
+                    shutil.rmtree(app_path, ignore_errors=True)
 
-            self.update_ui_state("Purging target application data...", is_working=True)
-            app_path = Path(os.environ['LOCALAPPDATA']) / 'Roblox'
-            if app_path.exists():
-                shutil.rmtree(app_path)
+                update_status("Downloading fresh Roblox installer...")
+                installer_url = "https://www.roblox.com/download/client"
+                temp_path = Path(os.environ['TEMP']) / 'RobloxPlayerInstaller.exe'
 
-            self.update_ui_state("Downloading fresh installer...", is_working=True)
-            installer_url = "https://www.roblox.com/download/client"
-            temp_path = Path(os.environ['TEMP']) / 'RobloxPlayerInstaller.exe'
+                def progress_hook(block_num, block_size, total_size):
+                    if total_size > 0:
+                        pct = min(int(block_num * block_size * 100 / total_size), 100)
+                        update_status(f"Downloading Roblox... {pct}%")
 
-            def progress(block_num, block_size, total_size):
-                if total_size > 0:
-                    pct = min(block_num * block_size * 100 / total_size, 100)
-                    self.update_ui_state(f"Downloading... {pct:.1f}%", is_working=True)
+                urllib.request.urlretrieve(installer_url, str(temp_path), reporthook=progress_hook)
 
-            urllib.request.urlretrieve(installer_url, temp_path, reporthook=progress)
+                update_status("Running Roblox installer...")
+                subprocess.run([str(temp_path)], shell=True)
 
-            self.update_ui_state("Running installer...", is_working=True)
-            subprocess.run([str(temp_path)], shell=True)
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
 
-            try:
-                os.remove(temp_path)
-            except Exception:
-                pass
+            if check5_var.get() == "on":
+                update_status("Restarting PC in 10 seconds...")
+                time.sleep(10)
+                subprocess.run("shutdown /r /t 0", shell=True)
+                return
 
-            self.update_ui_state("Opening Roblox...", is_working=True)
-            import webbrowser
-            webbrowser.open("https://www.roblox.com")
-
-            self.update_ui_state("Sequence complete.", is_working=False)
-            messagebox.showinfo("Success", f"Sequence finished.\nNew MAC: {self.target_mac}")
+            update_status("Bypass Completed Successfully!")
+            messagebox.showinfo("Success", "Roblox Ban Async Bypass Finished!")
 
         except Exception as e:
-            self.update_ui_state("Sequence encountered an error.", is_working=False)
-            messagebox.showerror("Error", f"An unexpected error occurred:\n{str(e)}")
+            messagebox.showerror("Error", f"An error occurred:\n{str(e)}")
+            update_status("Error occurred!")
+        finally:
+            btn7.configure(state="normal")
+            progress.stop()
+            progress.set(0)
 
-        self.adapter_name, self.current_mac = self.net_manager.get_real_adapter()
-        self.target_mac = self.net_manager.generate_mac()
+    threading.Thread(target=run_sequence, daemon=True).start()
 
 
-if __name__ == "__main__":
-    app = SpooferApp()
-    app.mainloop()
+btn7 = ctk.CTkButton(content, text="Start Bypass", font=("Segoe UI", 13, "bold"), height=38, width=190,
+                     fg_color="#3b8ed0", hover_color="#2e7ac4", command=start_bypass)
+btn7.pack(pady=12)
+
+app.mainloop()

@@ -1,6 +1,6 @@
 # Roblox Ban Async Bypass
 
-Powerful Windows tool to help bypass Roblox hardware bans using MAC address spoofing + clean reinstall.
+Powerful Bypass Tool Used To Get Rid Of Error Code 600 Roblox
 
 ---
 

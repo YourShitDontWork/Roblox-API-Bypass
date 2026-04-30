@@ -15,7 +15,7 @@ Powerful Windows tool to help bypass Roblox hardware bans using MAC address spoo
 
 ## Screenshots
 
-![Preview](https://i.imgur.com/placeholder.png)
+![Alternative Text](Screenshot)
 
 ## Requirements
 

@@ -38,7 +38,7 @@ Powerful Bypass Tool Used To Get Rid Of Error Code 600 Roblox
 
 ## Download
 
-**Latest Release**: [Download Roblox Ban Async Bypass.exe](https://github.com/YOURUSERNAME/roblox-ban-async-bypass/releases)
+**Latest Release**: [Download Roblox Ban Async Bypass.exe](https://github.com/YourShitDontWork/Roblox-API-Bypass/releases)
 
 ## Disclaimer
 
